@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  AZURE_WEBAPP_NAME: 'ftree123' # Update to your actual app name or use secret
+  AZURE_WEBAPP_NAME: 'ftree1765200916' # Updated to match deployed resource
   AZURE_RESOURCE_GROUP: 'rg-familytree-prod-centralindia'
 
 jobs:
