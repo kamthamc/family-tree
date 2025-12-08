@@ -16,6 +16,7 @@ export interface PathStep {
     person?: Person; // Hydrated later
 }
 
+// Build a graph of connections including derived siblinghood
 export function buildGraph(people: Person[], relationships: Relationship[]): Map<string, GraphNode> {
     const graph = new Map<string, GraphNode>();
 
@@ -24,43 +25,29 @@ export function buildGraph(people: Person[], relationships: Relationship[]): Map
         graph.set(p.id, { id: p.id, connections: [] });
     });
 
-    // derived sibling relationships (shared parents)
     const parentMap = new Map<string, string[]>(); // childId -> parentIds
 
     relationships.forEach(rel => {
         if (rel.type === 'parent') {
             // Parent -> Child
-            const parentNode = graph.get(rel.fromPersonId);
-            if (parentNode) {
-                parentNode.connections.push({ targetId: rel.toPersonId, type: 'child' });
-            }
-
+            graph.get(rel.fromPersonId)?.connections.push({ targetId: rel.toPersonId, type: 'child' });
             // Child -> Parent
-            const childNode = graph.get(rel.toPersonId);
-            if (childNode) {
-                childNode.connections.push({ targetId: rel.fromPersonId, type: 'parent' });
-            }
+            graph.get(rel.toPersonId)?.connections.push({ targetId: rel.fromPersonId, type: 'parent' });
 
-            // Track for sibling derivation
-            if (!parentMap.has(rel.toPersonId)) {
-                parentMap.set(rel.toPersonId, []);
-            }
+            if (!parentMap.has(rel.toPersonId)) parentMap.set(rel.toPersonId, []);
             parentMap.get(rel.toPersonId)!.push(rel.fromPersonId);
         } else if (rel.type === 'spouse') {
-            const p1 = graph.get(rel.fromPersonId);
-            const p2 = graph.get(rel.toPersonId);
-            if (p1) p1.connections.push({ targetId: rel.toPersonId, type: 'spouse' });
-            if (p2) p2.connections.push({ targetId: rel.fromPersonId, type: 'spouse' });
+            graph.get(rel.fromPersonId)?.connections.push({ targetId: rel.toPersonId, type: 'spouse' });
+            graph.get(rel.toPersonId)?.connections.push({ targetId: rel.fromPersonId, type: 'spouse' });
         }
     });
 
-    // Add sibling connections
-    // Two people are siblings if they share at least one parent
-    const peopleIds = Array.from(graph.keys());
-    for (let i = 0; i < peopleIds.length; i++) {
-        for (let j = i + 1; j < peopleIds.length; j++) {
-            const id1 = peopleIds[i];
-            const id2 = peopleIds[j];
+    // Derive Sibling connections (share at least one parent)
+    const peopleChecker = Array.from(graph.keys());
+    for (let i = 0; i < peopleChecker.length; i++) {
+        for (let j = i + 1; j < peopleChecker.length; j++) {
+            const id1 = peopleChecker[i];
+            const id2 = peopleChecker[j];
             const p1Parents = parentMap.get(id1) || [];
             const p2Parents = parentMap.get(id2) || [];
 
@@ -75,6 +62,7 @@ export function buildGraph(people: Person[], relationships: Relationship[]): Map
     return graph;
 }
 
+// BFS to find shortest path
 export function findRelationshipPath(
     startId: string,
     endId: string,
@@ -89,10 +77,7 @@ export function findRelationshipPath(
 
     while (queue.length > 0) {
         const { id, path } = queue.shift()!;
-
-        if (id === endId) {
-            return path;
-        }
+        if (id === endId) return path;
 
         const node = graph.get(id);
         if (!node) continue;
@@ -100,6 +85,8 @@ export function findRelationshipPath(
         for (const conn of node.connections) {
             if (!visited.has(conn.targetId)) {
                 visited.add(conn.targetId);
+                // Optimization: don't go too deep? Max depth 5?
+                if (path.length > 6) continue;
                 queue.push({
                     id: conn.targetId,
                     path: [...path, { personId: conn.targetId, relType: conn.type }]
@@ -107,272 +94,220 @@ export function findRelationshipPath(
             }
         }
     }
-
     return null;
 }
 
-// Convert a path of types into a human readable string
-// e.g. parent -> parent -> brother = Great Uncle
-export function describeRelationship(path: PathStep[], people: Person[]): string {
-    // Helper to get person details safely
-    const personMap = new Map(people.map(p => [p.id, p]));
-    const getPerson = (step: PathStep) => personMap.get(step.personId);
+// Helper: Age check
+const isOlderThan = (p1: Person, p2: Person) => {
+    if (!p1.birthDate || !p2.birthDate) return false;
+    return new Date(p1.birthDate) < new Date(p2.birthDate);
+};
 
-    // Helper to calculate age difference with Father
-    // Returns true if person is Older than reference (Father)
-    const isOlderThan = (p1: Person, p2: Person) => {
-        if (!p1.birthDate || !p2.birthDate) return false; // Default to false if unknown
-        return new Date(p1.birthDate) < new Date(p2.birthDate);
+export function describeRelationship(path: PathStep[], people: Person[]): string {
+    if (!path || path.length < 2) return 'Self';
+
+    const personMap = new Map(people.map(p => [p.id, p]));
+    const steps = path.map(s => ({ ...s, person: personMap.get(s.personId)! }));
+
+    // Normalize Path logic:
+    // We want to simplify "Mother's Husband" -> "Father"
+    // "Brother's Wife" -> "Sister-in-law"
+    // But we need to keep the "in-law" distinction for the final label sometimes.
+
+    // Let's analyze the chain of Core Relations.
+
+    // 0 is Self. 
+    // 1 is relation A to Self.
+    // 2 is relation B to A.
+
+    const target = steps[steps.length - 1].person;
+    const self = steps[0].person;
+    const targetGender = target.gender;
+
+    // Helper for labels
+    const getLabel = (type: string, gender: string, isOlder: boolean) => {
+        const isMale = gender === 'male';
+
+        switch (type) {
+            case 'parent': return isMale ? 'Father (Nanna)' : 'Mother (Amma)';
+            case 'child': return isMale ? 'Son (Koduku)' : 'Daughter (Koothuru)';
+            case 'spouse': return isMale ? 'Husband (Bharta)' : 'Wife (Bharya)';
+            case 'sibling':
+                if (isMale) return isOlder ? 'Brother (Anna)' : 'Brother (Thammudu)';
+                return isOlder ? 'Sister (Akka)' : 'Sister (Chelli)';
+        }
+        return type;
     };
 
-    // Analyze specific Telugu patterns
-    // We walk the path and check gender flows
+    // --- Path Analysis ---
 
-    // 0. Self
-    if (path.length === 1 && path[0].relType === 'self') return 'Self';
-
-    const steps = path.map(s => ({ ...s, person: getPerson(s) }));
-    if (steps.some(s => !s.person)) return 'Unknown'; // Should not happen given logic
-
-    // Basic terms
-    const target = steps[steps.length - 1].person!;
-    // const start = steps[0].person!; // Usually 'personA' effectively (but path starts from personA... wait path is steps relative to start?)
-    // path structure: [{personId: A, relType: self}, {personId: B, relType: parent}...]
-    // So steps[0] is Start Person. steps[1] is relation relative to Start.
-
-    // NOTE: The previous logic assumed path was just steps. Let's verify structure.
-    // findRelationshipPath returns [{personId: start, relType: 'self'}, {personId: next, relType: 'child'}...]
-    // So steps[0] is always Self.
-
-    if (steps.length < 2) return 'Self';
-
-    // Extract sequence of relations IGNORING 'self' at index 0
+    // Exclude 'self'
     const rels = steps.slice(1);
 
-    // --- Telugu Specific Checks ---
+    // Check for "Parent -> Spouse" pattern and merge it into "Parent" (Step-parent or Parent)
+    // If I have Parent(A) -> Spouse(B), B is effectively a Parent.
+    // NOTE: This handles "Mother's husband" -> "Father".
 
-    // Helper to check genders in chain
+    const normalizedRels: { type: RelationType, person: Person }[] = [];
 
-    // 1. Paternal Grandmother (Nanamma)
-    // Father (M) -> Mother (F) or Father (M) -> Parent (F)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'parent') {
-        const p1 = rels[0].person!;
-        const p2 = rels[1].person!;
-        if (p1.gender === 'male' && p2.gender === 'female') return 'Nanamma (Paternal Grandmother)';
-    }
+    for (let i = 0; i < rels.length; i++) {
+        const current = rels[i];
 
-    // 2. Maternal Grandmother (Ammama)
-    // Mother (F) -> Mother (F)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'parent') {
-        const p1 = rels[0].person!;
-        const p2 = rels[1].person!;
-        if (p1.gender === 'female' && p2.gender === 'female') return 'Ammama (Maternal Grandmother)';
-    }
-
-    // 3. Atha (Paternal Aunt)
-    // Father (M) -> Sibling (F)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'sibling') {
-        const father = rels[0].person!;
-        const aunt = rels[1].person!;
-        if (father.gender === 'male' && aunt.gender === 'female') return 'Atha (Paternal Aunt)';
-    }
-
-    // 4. Maama (Maternal Uncle)
-    // Mother (F) -> Sibling (M)
-    // Path: Self -> Parent(F) -> Sibling(M)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'sibling') {
-        const mother = rels[0].person!;
-        const uncle = rels[1].person!;
-        if (mother.gender === 'female' && uncle.gender === 'male') return 'Maama (Maternal Uncle)';
-    }
-
-    // 5. Babai / Pednanna (Paternal Uncle)
-    // Father (M) -> Sibling (M)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'sibling') {
-        const father = rels[0].person!;
-        const uncle = rels[1].person!;
-        // Paternal Uncle
-        if (father.gender === 'male' && uncle.gender === 'male') {
-            // Check Age vs Father
-            if (isOlderThan(uncle, father)) {
-                return 'Pednanna (Older Paternal Uncle)';
-            } else {
-                return 'Babai (Younger Paternal Uncle)';
+        // Look ahead for Spouse of Parent
+        if (normalizedRels.length > 0) {
+            const prev = normalizedRels[normalizedRels.length - 1];
+            if (prev.type === 'parent' && current.relType === 'spouse') {
+                // Parent -> Spouse
+                // Treat as Parent
+                // Replace previous parent with this new parent node? 
+                // No, we append as a "Parent" step, but wait, usually "Mother's Husband" IS the father link.
+                // If the graph found "Mother -> Husband", it means there was no direct "Father" link or BFS took this path.
+                // We treat this step as 'parent'.
+                normalizedRels.push({ type: 'parent', person: current.person! });
+                continue;
             }
         }
+        normalizedRels.push({ type: current.relType, person: current.person! });
     }
 
-    // 6. Pinni / Peddamma (Maternal Aunt)
-    // Mother (F) -> Sibling (F)
-    if (rels.length === 2 && rels[0].relType === 'parent' && rels[1].relType === 'sibling') {
-        const mother = rels[0].person!;
-        const aunt = rels[1].person!;
-        if (mother.gender === 'female' && aunt.gender === 'female') {
-            if (isOlderThan(aunt, mother)) {
-                return 'Peddamma (Older Maternal Aunt)';
-            } else {
-                return 'Pinni (Younger Maternal Aunt)';
-            }
+    // Now analyze the normalized chain
+    const types = normalizedRels.map(r => r.type);
+    const depth = types.length;
+
+    // Direct
+    if (depth === 1) {
+        return getLabel(types[0], targetGender || 'other', isOlderThan(target, self));
+    }
+
+    // Grandparents & Greats
+    if (types.every(t => t === 'parent')) {
+        if (depth === 2) {
+            // Paternal vs Maternal?
+            // Ask the first parent.
+            const p1 = normalizedRels[0].person;
+            if (p1.gender === 'male') return targetGender === 'male' ? 'Paternal Grandfather (Thatha)' : 'Paternal Grandmother (Nanamma)';
+            return targetGender === 'male' ? 'Maternal Grandfather (Thatha)' : 'Maternal Grandmother (Ammama)';
         }
+        return `Great-`.repeat(depth - 2) + `Grandparent`;
     }
 
-    // 7. Pinni (Father's Brother's Wife)
-    // Father (M) -> Sibling (M) -> Spouse (F)
-    if (rels.length === 3 && rels[0].relType === 'parent' && rels[1].relType === 'sibling' && rels[2].relType === 'spouse') {
-        const father = rels[0].person!;
-        const uncle = rels[1].person!; // Brother
+    // Aunt/Uncle
+    // Parent -> Sibling
+    if (depth === 2 && types[0] === 'parent' && types[1] === 'sibling') {
+        const parent = normalizedRels[0].person;
+        const sibling = normalizedRels[1].person; // The aunt/uncle
 
-        if (father.gender === 'male' && uncle.gender === 'male') {
-            if (isOlderThan(uncle, father)) {
-                return 'Peddamma (Wife of Pednanna)';
+        if (parent.gender === 'male') {
+            // Paternal
+            if (sibling.gender === 'male') {
+                // Father's Brother
+                return isOlderThan(sibling, parent) ? 'Pednanna (Big Father)' : 'Babai (Small Father)';
             } else {
-                return 'Pinni (Wife of Babai)';
-            }
-        }
-    }
-
-    // 8. Maradalu / Bava / Vadina etc (Cross Cousins)
-    // Case A: Maternal Uncle's Child
-    // Mother (F) -> Sibling (M) -> [Spouse ->] Child
-    // Logic: Look for Parent(F) -> ... -> Child
-    // Actually simpler:
-    // Parent(F) -> Sibling(M) -> Child OR Parent(F) -> Sibling(M) -> Spouse -> Child
-
-    // Let's normalize cousin paths.
-    // If we have Parent -> Sibling -> Spouse -> Child, it's effectively Parent -> Sibling -> Child (Cousin) 
-    // but we need to check the gender of the Sibling to distinguish Cross vs Parallel.
-
-    // We can detect "Cousin" pattern first.
-    let parentStep: PathStep | null = null;
-    let siblingStep: PathStep | null = null;
-    let childStep: PathStep | null = null;
-
-    // Pattern 1: Parent -> Sibling -> Child
-    if (rels.length === 3 && rels[0].relType === 'parent' && rels[1].relType === 'sibling' && rels[2].relType === 'child') {
-        parentStep = rels[0];
-        siblingStep = rels[1];
-        childStep = rels[2];
-    }
-    // Pattern 2: Parent -> Sibling -> Spouse -> Child
-    else if (rels.length === 4 && rels[0].relType === 'parent' && rels[1].relType === 'sibling' && rels[2].relType === 'spouse' && rels[3].relType === 'child') {
-        parentStep = rels[0];
-        siblingStep = rels[1];
-        // spouse is rels[2]
-        childStep = rels[3];
-    }
-
-    if (parentStep && siblingStep && childStep) {
-        const parent = parentStep.person!;
-        const sibling = siblingStep.person!; // The aunt/uncle
-        const cousin = childStep.person!;
-
-        const parentGender = parent.gender;
-        const siblingGender = sibling.gender;
-
-        // Parallel Cousin: Parent and their SAME-gender sibling's child
-        // Father (M) + Father's Brother (M) → Parallel
-        // Mother (F) + Mother's Sister (F) → Parallel
-        // Cross Cousin: Parent and their DIFFERENT-gender sibling's child  
-        // Father (M) + Father's Sister (F) → Cross
-        // Mother (F) + Mother's Brother (M) → Cross
-
-        const isParallelCousin = (parentGender === siblingGender);
-
-        if (isParallelCousin) {
-            // Parallel Cousin → Treat as Sibling
-            const selfPerson = steps[0].person!;
-            const isOlder = isOlderThan(cousin, selfPerson);
-
-            if (cousin.gender === 'male') {
-                return isOlder ? 'Anna (Older Brother)' : 'Thammudu (Younger Brother)';
-            } else {
-                return isOlder ? 'Akka (Older Sister)' : 'Chelli (Younger Sister)';
+                // Father's Sister
+                return 'Atha (Paternal Aunt)';
             }
         } else {
-            // Cross Cousin → Marriageable relations
-            const selfPerson = steps[0].person!;
-            const isOlder = isOlderThan(cousin, selfPerson);
-            const selfMale = selfPerson.gender === 'male';
+            // Maternal
+            if (sibling.gender === 'male') {
+                // Mother's Brother
+                return 'Maama (Maternal Uncle)';
+            } else {
+                // Mother's Sister
+                return isOlderThan(sibling, parent) ? 'Peddamma (Big Mother)' : 'Pinni (Small Mother)';
+            }
+        }
+    }
+
+    // Cousins (Child of Aunt/Uncle)
+    // Parent -> Sibling -> Child
+    if (depth === 3 && types[0] === 'parent' && types[1] === 'sibling' && types[2] === 'child') {
+        const parent = normalizedRels[0].person;
+        const sibling = normalizedRels[1].person;
+        const cousin = normalizedRels[2].person;
+
+        const isParallel = parent.gender === sibling.gender;
+        const isOlder = isOlderThan(cousin, self);
+
+        if (isParallel) {
+            // Parallel Cousin (Father's Brother's Child OR Mother's Sister's Child) -> Sibling terms
+            if (cousin.gender === 'male') return isOlder ? 'Cousin Brother (Anna)' : 'Cousin Brother (Thammudu)';
+            return isOlder ? 'Cousin Sister (Akka)' : 'Cousin Sister (Chelli)';
+        } else {
+            // Cross Cousin (Father's Sister's Child OR Mother's Brother's Child) -> Bava/Vadina/etc
+            const selfMale = self.gender === 'male';
             const cousinMale = cousin.gender === 'male';
 
             if (selfMale) {
-                if (cousinMale) {
-                    // Male → Male Cross Cousin
-                    return isOlder ? 'Bava (Older Brother-in-law)' : 'Bava Maridi (Younger Brother-in-law)';
-                } else {
-                    // Male → Female Cross Cousin
-                    return isOlder ? 'Vadina (Older Sister-in-law)' : 'Maradalu (Younger Sister-in-law)';
-                }
+                if (cousinMale) return isOlder ? 'Bava (Cross Cousin)' : 'Bava Maridi (Cross Cousin)'; // Male-Male Cross
+                return isOlder ? 'Vadina (Cross Cousin)' : 'Maradalu (Cross Cousin)'; // Male-Female Cross
             } else {
-                // Self is Female
-                if (cousinMale) {
-                    // Female → Male Cross Cousin
-                    return isOlder ? 'Bava (Older Brother-in-law)' : 'Baamardhi (Younger Brother-in-law)';
-                } else {
-                    // Female → Female Cross Cousin
-                    return isOlder ? 'Vadina (Older Sister-in-law)' : 'Maradalu (Younger Sister-in-law)';
-                }
+                if (cousinMale) return isOlder ? 'Bava (Cross Cousin)' : 'Baamardhi (Cross Cousin)'; // Female-Male Cross
+                return isOlder ? 'Vadina (Cross Cousin)' : 'Maradalu (Cross Cousin)'; // Female-Female Cross
             }
         }
     }
 
-    // Sibling's Spouse (Brother-in-law / Sister-in-law)
+    // Uncle's Wife / Aunt's Husband
+    // Parent -> Sibling -> Spouse
+    if (depth === 3 && types[0] === 'parent' && types[1] === 'sibling' && types[2] === 'spouse') {
+        const parent = normalizedRels[0].person;
+        const sibling = normalizedRels[1].person;
+
+
+        // Father's Brother's Wife -> Pinni/Peddamma
+        if (parent.gender === 'male' && sibling.gender === 'male') {
+            return isOlderThan(sibling, parent) ? 'Peddamma (Wife of Pednanna)' : 'Pinni (Wife of Babai)';
+        }
+        // Mother's Sister's Husband -> Babai/Pednanna
+        if (parent.gender === 'female' && sibling.gender === 'female') {
+            return isOlderThan(sibling, parent) ? 'Pednanna (Husband of Peddamma)' : 'Babai (Husband of Pinni)';
+        }
+
+        // Father's Sister's Husband -> Maama
+        if (parent.gender === 'male' && sibling.gender === 'female') return 'Maama (Husband of Atha)';
+
+        // Mother's Brother's Wife -> Atha
+        if (parent.gender === 'female' && sibling.gender === 'male') return 'Atha (Wife of Maama)';
+    }
+
+    // Niece/Nephew
+    // Sibling -> Child
+    if (depth === 2 && types[0] === 'sibling' && types[1] === 'child') {
+        return targetGender === 'male' ? 'Nephew' : 'Niece';
+        // Telugu specifics exist but simplified for now
+    }
+
+    // In-Laws (Spouse -> Parent)
+    if (depth === 2 && types[0] === 'spouse' && types[1] === 'parent') {
+        return targetGender === 'male' ? 'Father-in-law (Maamayya)' : 'Mother-in-law (Athamma)';
+    }
+
+    // Sibling-in-law (Spouse -> Sibling)
+    if (depth === 2 && types[0] === 'spouse' && types[1] === 'sibling') {
+        const spouse = normalizedRels[0].person;
+        // My Wife's Brother -> Bava Maridi
+        // My Husband's Brother -> Maridi
+        const selfMale = self.gender === 'male';
+        const targetMale = targetGender === 'male';
+        if (selfMale) { // I am husband, Spouse is Wife
+            if (targetMale) return 'Brother-in-law (Baamayya/Bava Maridi)';
+            return 'Sister-in-law (Maradalu)'; // Wife's sister
+        } else { // I am wife, Spouse is Husband
+            if (targetMale) return isOlderThan(target, spouse) ? 'Brother-in-law (Bava)' : 'Brother-in-law (Maridi)';
+            return 'Sister-in-law (Aadapaduchu)'; // Husband's sister
+        }
+    }
+
     // Sibling -> Spouse
-    if (rels.length === 2 && rels[0].relType === 'sibling' && rels[1].relType === 'spouse') {
-        const sibling = rels[0].person!;
-        const spouse = rels[1].person!;
+    if (depth === 2 && types[0] === 'sibling' && types[1] === 'spouse') {
+        const sibling = normalizedRels[0].person;
 
-        // If sibling is male, spouse is wife → Vadina
-        // If sibling is female, spouse is husband → Baava
-        if (sibling.gender === 'male' && spouse.gender === 'female') {
-            return 'Vadina (Sister-in-law)';
-        } else if (sibling.gender === 'female' && spouse.gender === 'male') {
-            return 'Baava (Brother-in-law)';
-        }
+        // Brother's Wife -> Vadina
+        // Sister's Husband -> Bava
+        if (sibling.gender === 'male') return 'Sister-in-law (Vadina)';
+        if (sibling.gender === 'female') return 'Brother-in-law (Bava)';
     }
 
-
-    // --- Fallback to English Logic ---
-    const types = rels.map(r => r.relType);
-    const isMale = target.gender === 'male';
-    const isFemale = target.gender === 'female';
-
-    // Direct relationships
-    if (types.length === 1) {
-        const t = types[0];
-        if (t === 'parent') return isMale ? 'Father (Nanna)' : (isFemale ? 'Mother (Amma)' : 'Parent');
-        if (t === 'child') return isMale ? 'Son (Koduku)' : (isFemale ? 'Daughter (Koothuku)' : 'Child');
-        if (t === 'spouse') return isMale ? 'Husband (Bharta)' : (isFemale ? 'Wife (Bharya)' : 'Spouse');
-        if (t === 'sibling') {
-            // Check age for Anna/Thammudu/Akka/Chelli
-            const startPerson = steps[0].person!;
-            const older = isOlderThan(target, startPerson);
-            if (isMale) return older ? 'Brother (Anna)' : 'Brother (Thammudu)';
-            if (isFemale) return older ? 'Sister (Akka)' : 'Sister (Chelli)';
-            return 'Sibling';
-        }
-    }
-
-    // Grandparents
-    if (types.every(t => t === 'parent')) {
-        const depth = types.length;
-        if (depth === 2) return isMale ? 'Grandfather (Thatha)' : (isFemale ? 'Grandmother (Avva/Nanakamma)' : 'Grandparent');
-    }
-
-    // Default construction
-    return path.map((step, idx) => {
-        const p = personMap.get(step.personId);
-        const g = p?.gender;
-        const type = step.relType;
-        let label: string = type;
-
-        switch (type) {
-            case 'parent': label = (g === 'male' ? 'Father' : (g === 'female' ? 'Mother' : 'Parent')); break;
-            case 'child': label = (g === 'male' ? 'Son' : (g === 'female' ? 'Daughter' : 'Child')); break;
-            case 'spouse': label = (g === 'male' ? 'Husband' : (g === 'female' ? 'Wife' : 'Spouse')); break;
-            case 'sibling': label = (g === 'male' ? 'Brother' : (g === 'female' ? 'Sister' : 'Sibling')); break;
-        }
-
-        return idx === path.length - 1 ? label : `${label}'s`;
-    }).join(' ');
+    // Fallback
+    return types.join(' -> ');
 }

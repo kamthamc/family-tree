@@ -15,7 +15,7 @@ interface EditPersonModalProps {
 
 export default function EditPersonModal({ person, onClose, onFocus }: EditPersonModalProps) {
     const queryClient = useQueryClient();
-    const [activeTab, setActiveTab] = useState<'details' | 'family' | 'events' | 'media' | 'timeline'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'family' | 'events' | 'timeline'>('details');
     // Ensure attributes object exists
     const [formData, setFormData] = useState<Partial<Person>>({
         ...person,
@@ -223,7 +223,7 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
 
                 {/* Tabs */}
                 <div className="flex border-b border-gray-800 bg-gray-900/50">
-                    {['details', 'family', 'events', 'timeline', 'media'].map((tab) => (
+                    {['details', 'family', 'events', 'timeline'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab as any)}
@@ -501,13 +501,7 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                         </div>
                     )}
 
-                    {activeTab === 'media' && (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-500 py-8">
-                            <Upload size={48} className="mb-4 opacity-20" />
-                            <p className="text-sm">Media gallery coming soon.</p>
-                            <p className="text-xs text-gray-600 mt-1">Use the profile picture upload in Details tab for now.</p>
-                        </div>
-                    )}
+
 
                     {activeTab === 'timeline' && (
                         <PersonTimeline person={person} events={events || []} />

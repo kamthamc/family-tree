@@ -11,7 +11,6 @@ export default function SmartStepEdge({
     targetPosition,
     style = {},
     markerEnd,
-    data,
 }: EdgeProps) {
     const [edgePath] = getSmoothStepPath({
         sourceX,

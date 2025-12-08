@@ -63,7 +63,7 @@ export default function TreeControls({ people, relationships, onLayoutChange, la
             const dataUrl = await toPng(element, {
                 backgroundColor: '#111827',
                 quality: 1.0,
-                pixelRatio: 3, // Increased from 2 to 3 for higher quality
+                pixelRatio: 4, // Increased for higher quality (fonts readability)
                 cacheBust: true,
                 filter: (node) => {
                     // Exclude controls and UI elements from export
