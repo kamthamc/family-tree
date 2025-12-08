@@ -5,7 +5,7 @@ set -e
 RG_NAME="${1:-rg-familytree-prod-centralindia}"
 LOCATION="${2:-centralindia}"
 APP_NAME="${3:-familytreeapp}" # Should match your Bicep/Deploy naming
-GITHUB_REPO="${4:-chaitanyakkamatham/family-tree}" # CHANGE THIS to your actual repo "user/repo"
+GITHUB_REPO="${4:-kamthamc/family-tree}" # Updated to match your actual GitHub handle
 
 IDENTITY_NAME="id-${APP_NAME}-github"
 
@@ -25,15 +25,23 @@ echo "  Client ID: $CLIENT_ID"
 echo "  Principal ID: $PRINCIPAL_ID"
 
 # 2. Creating Federated Credential (for Main branch)
-echo "Creating Federated Credential for 'main' branch..."
+echo "Re-creating Federated Credential for 'main' branch..."
+
+# Delete if exists to ensure we update the subject
+az identity federated-credential delete \
+    --name "github-actions-main" \
+    --identity-name "${IDENTITY_NAME}" \
+    --resource-group "${RG_NAME}" \
+    --yes || true
+
+echo "Creating new credential for repo: $GITHUB_REPO..."
 az identity federated-credential create \
   --name "github-actions-main" \
   --identity-name "${IDENTITY_NAME}" \
   --resource-group "${RG_NAME}" \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:${GITHUB_REPO}:ref:refs/heads/main" \
-  --audience "api://AzureADTokenExchange" \
-  || echo "Credential might already exist, skipping..."
+  --audience "api://AzureADTokenExchange"
 
 # 3. Assign Permissions (Contributor on Resource Group)
 echo "Assigning Contributor role to Identity on Resource Group..."
