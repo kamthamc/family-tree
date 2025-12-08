@@ -1,8 +1,11 @@
 import { useRef, useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { Download, Loader2, ChevronDown } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 import Papa from 'papaparse';
 import { api, type Person, type Relationship } from '../api';
 import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 interface CSVManagerProps {
     people?: Person[];
@@ -45,10 +48,42 @@ export default function CSVManager({ people, relationships }: CSVManagerProps) {
         setIsOpen(false);
     };
 
+    const { currentFamilyTree, setCurrentFamilyTreeId, refreshFamilyTrees } = useAuth();
+
+    const [pendingImport, setPendingImport] = useState<{ file: File, type: 'people' | 'relationships' } | null>(null);
+
     const handleImport = async (event: React.ChangeEvent<HTMLInputElement>, type: 'people' | 'relationships') => {
         const file = event.target.files?.[0];
         if (!file) return;
 
+        // Auto-create tree if none exists
+        if (!currentFamilyTree) {
+            setPendingImport({ file, type });
+            if (event.target) event.target.value = ''; // Reset input to allow re-selection if cancelled
+            return;
+        }
+
+        processImport(file, type);
+        if (event.target) event.target.value = '';
+    };
+
+    const confirmCreateTree = async () => {
+        if (!pendingImport) return;
+
+        try {
+            const newTree = await api.createFamilyTree({ name: 'My Family Tree' });
+            await refreshFamilyTrees();
+            setCurrentFamilyTreeId(newTree.id);
+            // Process the pending import with the new tree
+            await processImport(pendingImport.file, pendingImport.type);
+        } catch (e: any) {
+            toast.error("Failed to create family tree: " + e.message);
+        } finally {
+            setPendingImport(null);
+        }
+    };
+
+    const processImport = (file: File, type: 'people' | 'relationships') => {
         setImporting(true);
         setIsOpen(false);
         Papa.parse(file, {
@@ -67,13 +102,12 @@ export default function CSVManager({ people, relationships }: CSVManagerProps) {
 
                     queryClient.invalidateQueries({ queryKey: ['people'] });
                     queryClient.invalidateQueries({ queryKey: ['relationships'] });
-                    alert(`Successfully imported ${type}`);
-                } catch (error) {
+                    toast.success(`Successfully imported ${type}`);
+                } catch (error: any) {
                     console.error('Import failed:', error);
-                    alert('Import failed. Check console for details.');
+                    toast.error(`Import failed: ${error.message || 'Unknown error'}`);
                 } finally {
                     setImporting(false);
-                    if (event.target) event.target.value = '';
                 }
             },
             error: (error) => {
@@ -81,7 +115,7 @@ export default function CSVManager({ people, relationships }: CSVManagerProps) {
                 setImporting(false);
             }
         });
-    };
+    }
 
     return (
         <div className="flex gap-2" ref={wrapperRef}>
@@ -108,6 +142,21 @@ export default function CSVManager({ people, relationships }: CSVManagerProps) {
 
             <input type="file" ref={peopleInputRef} className="hidden" accept=".csv" onChange={(e) => handleImport(e, 'people')} />
             <input type="file" ref={relInputRef} className="hidden" accept=".csv" onChange={(e) => handleImport(e, 'relationships')} />
+
+            {/* Custom Confirmation Dialog replaced with ConfirmModal */}
+            <ConfirmModal
+                isOpen={!!pendingImport}
+                title="Create Family Tree?"
+                message={`You don't have a family tree selected. Would you like to create a new tree named "My Family Tree" and import this data into it?`}
+                confirmText="Create & Import"
+                onCancel={() => {
+                    setPendingImport(null);
+                    // Reset inputs
+                    if (peopleInputRef.current) peopleInputRef.current.value = '';
+                    if (relInputRef.current) relInputRef.current.value = '';
+                }}
+                onConfirm={confirmCreateTree}
+            />
         </div>
     );
 }

@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, Plus, TreeDeciduous } from 'lucide-react';
 import { api } from '../api';
+import toast from 'react-hot-toast';
+
+import ConfirmModal from './ConfirmModal';
 
 export default function FamilyTreeSelector() {
     const { familyTrees, currentFamilyTree, setCurrentFamilyTreeId, refreshFamilyTrees } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [newTreeName, setNewTreeName] = useState('');
+    const [isPending, startTransition] = useTransition();
+
+    // Modal State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        type: 'delete' | 'duplicate' | null;
+        treeId: string;
+        treeName: string;
+    }>({ isOpen: false, type: null, treeId: '', treeName: '' });
 
     const handleCreateTree = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -24,7 +36,7 @@ export default function FamilyTreeSelector() {
     };
 
     return (
-        <div className="relative z-50">
+        <div className={`relative z-50 ${isPending ? 'opacity-70 contrast-75' : ''}`}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg border border-slate-700 transition-colors"
@@ -84,7 +96,9 @@ export default function FamilyTreeSelector() {
                                         <div key={tree.id} className="group flex items-center justify-between hover:bg-slate-700 transition-colors pr-2">
                                             <button
                                                 onClick={() => {
-                                                    setCurrentFamilyTreeId(tree.id);
+                                                    startTransition(() => {
+                                                        setCurrentFamilyTreeId(tree.id);
+                                                    });
                                                     setIsOpen(false);
                                                 }}
                                                 className={`flex-1 text-left px-4 py-2 text-sm flex items-center justify-between ${currentFamilyTree?.id === tree.id ? 'text-blue-200' : 'text-slate-200'}`}
@@ -94,19 +108,14 @@ export default function FamilyTreeSelector() {
                                             </button>
                                             <div className="flex gap-1">
                                                 <button
-                                                    onClick={async (e) => {
+                                                    onClick={(e) => {
                                                         e.stopPropagation();
-                                                        if (confirm(`Duplicate "${tree.name}"?`)) {
-                                                            try {
-                                                                const newTree = await api.duplicateFamilyTree(tree.id);
-                                                                await refreshFamilyTrees();
-                                                                setCurrentFamilyTreeId(newTree.id);
-                                                                setIsOpen(false);
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                                alert('Failed to duplicate tree');
-                                                            }
-                                                        }
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            type: 'duplicate',
+                                                            treeId: tree.id,
+                                                            treeName: tree.name
+                                                        });
                                                     }}
                                                     className="hidden group-hover:block p-1 text-slate-400 hover:text-white"
                                                     title="Duplicate Tree"
@@ -114,22 +123,14 @@ export default function FamilyTreeSelector() {
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
                                                 </button>
                                                 <button
-                                                    onClick={async (e) => {
+                                                    onClick={(e) => {
                                                         e.stopPropagation();
-                                                        if (confirm(`Are you sure you want to DELETE "${tree.name}" and all its data? This cannot be undone.`)) {
-                                                            try {
-                                                                await api.deleteFamilyTree(tree.id);
-                                                                if (currentFamilyTree?.id === tree.id) {
-                                                                    // Clear current selection if deleted
-                                                                    setCurrentFamilyTreeId('');
-                                                                }
-                                                                await refreshFamilyTrees();
-                                                                setIsOpen(false);
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                                alert('Failed to delete tree');
-                                                            }
-                                                        }
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            type: 'delete',
+                                                            treeId: tree.id,
+                                                            treeName: tree.name
+                                                        });
                                                     }}
                                                     className="hidden group-hover:block p-1 text-slate-400 hover:text-red-400"
                                                     title="Delete Tree"
@@ -171,6 +172,37 @@ export default function FamilyTreeSelector() {
                     </div>
                 </>
             )}
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.type === 'delete' ? 'Delete Family Tree' : 'Duplicate Family Tree'}
+                message={confirmModal.type === 'delete'
+                    ? `Are you sure you want to DELETE "${confirmModal.treeName}"? This action cannot be undone and all data will be lost.`
+                    : `Do you want to create a copy of "${confirmModal.treeName}"?`
+                }
+                confirmText={confirmModal.type === 'delete' ? 'Delete' : 'Duplicate'}
+                isDestructive={confirmModal.type === 'delete'}
+                onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                onConfirm={async () => {
+                    try {
+                        if (confirmModal.type === 'delete') {
+                            await api.deleteFamilyTree(confirmModal.treeId);
+                            if (currentFamilyTree?.id === confirmModal.treeId) {
+                                setCurrentFamilyTreeId('');
+                            }
+                        } else if (confirmModal.type === 'duplicate') {
+                            const newTree = await api.duplicateFamilyTree(confirmModal.treeId);
+                            setCurrentFamilyTreeId(newTree.id);
+                        }
+                        await refreshFamilyTrees();
+                        setConfirmModal({ ...confirmModal, isOpen: false });
+                        setIsOpen(false); // Close main selector
+                    } catch (err) {
+                        console.error(err);
+                        toast.error(`Failed to ${confirmModal.type} tree`);
+                    }
+                }}
+            />
         </div>
     );
 }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-12-09
+### Added
+- **Session**: Extended authentication session duration to 12 hours (was 15m).
+- **UX**: Replaced jarring browser alerts with sleek Toast notifications for success/error messages.
+- **Export**: Improved PNG export quality, ensuring text is sharp even when zoomed out.
+- **Delete**: Implemented "Delete Family Tree" feature with confirmation.
+
+### Changed
+- **Cleanup**: Renamed `NewFamilyTree` component to `FamilyTree` and removed legacy files.
+- **Cleanup**: Standardized internal file naming conventions.
+
 ## [1.2.0] - 2025-12-08
 ### Added
 - **Docker**: Enabled version tagging for Docker images (e.g., `familytree:1.2.0`).

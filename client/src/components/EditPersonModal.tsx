@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useTransition, useOptimistic } from 'react';
 import { motion } from 'framer-motion';
 import { X, Upload, Plus, Trash2, Tag, Printer } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PersonTimeline from './Timeline/PersonTimeline';
 import { api, type Person, type Event, type PersonAttributes } from '../api';
@@ -15,6 +16,7 @@ interface EditPersonModalProps {
 
 export default function EditPersonModal({ person, onClose, onFocus }: EditPersonModalProps) {
     const queryClient = useQueryClient();
+    const [isPending, startTransition] = useTransition();
     const [activeTab, setActiveTab] = useState<'details' | 'family' | 'events' | 'timeline'>('details');
     // Ensure attributes object exists
     const [formData, setFormData] = useState<Partial<Person>>({
@@ -22,7 +24,13 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
         attributes: person.attributes || {}
     });
 
-    const { data: events } = useQuery({ queryKey: ['events', person.id], queryFn: () => api.getEvents(person.id) });
+    const isNew = person.id === 'new';
+
+    const { data: events } = useQuery({
+        queryKey: ['events', person.id],
+        queryFn: () => api.getEvents(person.id),
+        enabled: !isNew
+    });
     const { data: people } = useQuery({ queryKey: ['people'], queryFn: api.getPeople });
     const { data: relationships } = useQuery({ queryKey: ['relationships'], queryFn: api.getRelationships });
 
@@ -41,18 +49,35 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['relationships'] }),
     });
 
-    // Helper to get family members
-    const parents = relationships?.filter(r => r.toPersonId === person.id && r.type === 'parent').map(r => {
+    // Optimistic UI for Relationships
+    const [optimisticRelationships, setOptimisticRelationship] = useOptimistic(
+        relationships || [],
+        (state, action: { type: 'add' | 'delete' | 'update', payload: any }) => {
+            switch (action.type) {
+                case 'add':
+                    return [...state, action.payload];
+                case 'delete':
+                    return state.filter(r => r.id !== action.payload);
+                case 'update':
+                    return state.map(r => r.id === action.payload.id ? { ...r, ...action.payload } : r);
+                default:
+                    return state;
+            }
+        }
+    );
+
+    // Helper to get family members (using Optimistic State)
+    const parents = optimisticRelationships.filter(r => r.toPersonId === person.id && r.type === 'parent').map(r => {
         const p = people?.find(p => p.id === r.fromPersonId);
         return { ...r, person: p };
     }) || [];
 
-    const children = relationships?.filter(r => r.fromPersonId === person.id && r.type === 'parent').map(r => {
+    const children = optimisticRelationships.filter(r => r.fromPersonId === person.id && r.type === 'parent').map(r => {
         const p = people?.find(p => p.id === r.toPersonId);
         return { ...r, person: p };
     }) || [];
 
-    const spouses = relationships?.filter(r => (r.fromPersonId === person.id || r.toPersonId === person.id) && (r.type === 'spouse' || r.type === 'divorced')).map(r => {
+    const spouses = optimisticRelationships.filter(r => (r.fromPersonId === person.id || r.toPersonId === person.id) && (r.type === 'spouse' || r.type === 'divorced')).map(r => {
         const partnerId = r.fromPersonId === person.id ? r.toPersonId : r.fromPersonId;
         const p = people?.find(p => p.id === partnerId);
         return { ...r, person: p };
@@ -62,25 +87,51 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
 
     const handleAddParent = () => {
         if (!selectedRelationId) return;
-        createRelationshipMutation.mutate({ fromPersonId: selectedRelationId, toPersonId: person.id, type: 'parent' });
+        const tempId = `temp-${Date.now()}`;
+        const newRel = { id: tempId, fromPersonId: selectedRelationId, toPersonId: person.id, type: 'parent' };
+
+        startTransition(() => {
+            setOptimisticRelationship({ type: 'add', payload: newRel });
+            createRelationshipMutation.mutate({ fromPersonId: selectedRelationId, toPersonId: person.id, type: 'parent' });
+        });
         setSelectedRelationId('');
     };
 
     const handleAddChild = () => {
         if (!selectedRelationId) return;
-        createRelationshipMutation.mutate({ fromPersonId: person.id, toPersonId: selectedRelationId, type: 'parent' });
+        const tempId = `temp-${Date.now()}`;
+        const newRel = { id: tempId, fromPersonId: person.id, toPersonId: selectedRelationId, type: 'parent' };
+
+        startTransition(() => {
+            setOptimisticRelationship({ type: 'add', payload: newRel });
+            createRelationshipMutation.mutate({ fromPersonId: person.id, toPersonId: selectedRelationId, type: 'parent' });
+        });
         setSelectedRelationId('');
     };
 
     const handleAddSpouse = () => {
         if (!selectedRelationId) return;
-        createRelationshipMutation.mutate({ fromPersonId: person.id, toPersonId: selectedRelationId, type: 'spouse' });
+        const tempId = `temp-${Date.now()}`;
+        const newRel = { id: tempId, fromPersonId: person.id, toPersonId: selectedRelationId, type: 'spouse' };
+
+        startTransition(() => {
+            setOptimisticRelationship({ type: 'add', payload: newRel });
+            createRelationshipMutation.mutate({ fromPersonId: person.id, toPersonId: selectedRelationId, type: 'spouse' });
+        });
         setSelectedRelationId('');
     };
 
 
     const updateMutation = useMutation({
         mutationFn: (data: Partial<Person>) => api.updatePerson(person.id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['people'] });
+            onClose();
+        },
+    });
+
+    const createPersonMutation = useMutation({
+        mutationFn: (data: Partial<Person>) => api.createPerson(data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['people'] });
             onClose();
@@ -98,7 +149,14 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
     });
 
     const handleSave = () => {
-        updateMutation.mutate(formData);
+        if (isNew) {
+            // Remove ID from data if present as 'new' to avoid sending it to server
+            // actually api.createPerson logic might expect clean object
+            const { id, ...rest } = formData;
+            createPersonMutation.mutate(rest);
+        } else {
+            updateMutation.mutate(formData);
+        }
     };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,8 +284,14 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                     {['details', 'family', 'events', 'timeline'].map((tab) => (
                         <button
                             key={tab}
-                            onClick={() => setActiveTab(tab as any)}
-                            className={`flex-1 py-3 text-sm font-medium capitalize transition-colors relative ${activeTab === tab ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+                            onClick={() => {
+                                if (isNew && tab !== 'details') {
+                                    toast.error("Please save the person details first.");
+                                    return;
+                                }
+                                startTransition(() => setActiveTab(tab as any));
+                            }}
+                            className={`flex-1 py-3 text-sm font-medium capitalize transition-colors relative ${activeTab === tab ? 'text-blue-400' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'} ${(isNew && tab !== 'details') ? 'opacity-50 cursor-not-allowed' : ''}
                                 }`}
                         >
                             {tab}
@@ -242,7 +306,7 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                 </div>
 
                 {/* Content Area */}
-                <div className="p-6 overflow-y-auto flex-1 bg-gray-900">
+                <div className={`p-6 overflow-y-auto flex-1 bg-gray-900 transition-opacity ${isPending ? 'opacity-50' : 'opacity-100'}`}>
                     {activeTab === 'details' && (
                         <div className="space-y-6">
 
@@ -354,7 +418,15 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                             <FamilySection title="Parents" icon="users">
                                 <div className="space-y-2 mb-3">
                                     {parents.map((rel) => (
-                                        <FamilyMemberRow key={rel.id} person={rel.person} relationType={rel.type} onDelete={() => deleteRelationshipMutation.mutate(rel.id)} />
+                                        <FamilyMemberRow
+                                            key={rel.id}
+                                            person={rel.person}
+                                            relationType={rel.type}
+                                            onDelete={() => startTransition(() => {
+                                                setOptimisticRelationship({ type: 'delete', payload: rel.id });
+                                                deleteRelationshipMutation.mutate(rel.id);
+                                            })}
+                                        />
                                     ))}
                                     {parents.length === 0 && <EmptyState text="No parents recorded" />}
                                 </div>
@@ -379,8 +451,14 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                                             key={rel.id}
                                             person={rel.person}
                                             relationType={rel.type}
-                                            onDelete={() => deleteRelationshipMutation.mutate(rel.id)}
-                                            onUpdate={(newType) => updateRelationshipMutation.mutate({ id: rel.id, type: newType })}
+                                            onDelete={() => startTransition(() => {
+                                                setOptimisticRelationship({ type: 'delete', payload: rel.id });
+                                                deleteRelationshipMutation.mutate(rel.id);
+                                            })}
+                                            onUpdate={(newType) => startTransition(() => {
+                                                setOptimisticRelationship({ type: 'update', payload: { id: rel.id, type: newType } });
+                                                updateRelationshipMutation.mutate({ id: rel.id, type: newType });
+                                            })}
                                         />
                                     ))}
                                     {spouses.length === 0 && <EmptyState text="No spouses recorded" />}
@@ -402,7 +480,15 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                             <FamilySection title="Children" icon="baby">
                                 <div className="space-y-2 mb-3">
                                     {children.map((rel) => (
-                                        <FamilyMemberRow key={rel.id} person={rel.person} relationType={rel.type} onDelete={() => deleteRelationshipMutation.mutate(rel.id)} />
+                                        <FamilyMemberRow
+                                            key={rel.id}
+                                            person={rel.person}
+                                            relationType={rel.type}
+                                            onDelete={() => startTransition(() => {
+                                                setOptimisticRelationship({ type: 'delete', payload: rel.id });
+                                                deleteRelationshipMutation.mutate(rel.id);
+                                            })}
+                                        />
                                     ))}
                                     {children.length === 0 && <EmptyState text="No children recorded" />}
                                 </div>

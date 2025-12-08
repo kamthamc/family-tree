@@ -30,7 +30,7 @@ export class AuthService {
 
     constructor() {
         this.jwtSecret = process.env.JWT_SECRET || 'your-secret-key';
-        this.jwtExpiry = process.env.JWT_EXPIRY || '15m';
+        this.jwtExpiry = process.env.JWT_EXPIRY || '12h';
         this.refreshSecret = process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret';
         this.refreshExpiry = process.env.REFRESH_TOKEN_EXPIRY || '7d';
     }
@@ -166,14 +166,14 @@ export class AuthService {
      * Generate access token
      */
     private generateAccessToken(payload: TokenPayload): string {
-        return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiry });
+        return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiry } as jwt.SignOptions);
     }
 
     /**
      * Generate refresh token
      */
     private generateRefreshToken(payload: TokenPayload): string {
-        return jwt.sign(payload, this.refreshSecret, { expiresIn: this.refreshExpiry });
+        return jwt.sign(payload, this.refreshSecret, { expiresIn: this.refreshExpiry } as jwt.SignOptions);
     }
 
     /**

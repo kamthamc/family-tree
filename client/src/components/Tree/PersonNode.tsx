@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { memo } from 'react';
 import type { Person } from '../../api';
 
 interface PersonNodeProps extends NodeProps {
@@ -10,7 +11,7 @@ interface PersonNodeProps extends NodeProps {
     }
 }
 
-export default function PersonNode({ data }: PersonNodeProps) {
+function PersonNode({ data }: PersonNodeProps) {
     const { person, generationColor, generationLabel } = data;
 
     // Calculate age (logic duplicated from QuickView, maybe unify later)
@@ -92,3 +93,6 @@ export default function PersonNode({ data }: PersonNodeProps) {
         </div>
     );
 }
+
+const MemoizedPersonNode = memo(PersonNode);
+export default MemoizedPersonNode;

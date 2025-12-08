@@ -3,6 +3,7 @@ import { toPng } from 'html-to-image';
 import CSVManager from '../CSVManager';
 import { type Person, type Relationship } from '../../api';
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 export interface FilterState {
     labels: string[];
@@ -63,7 +64,12 @@ export default function TreeControls({ people, relationships, onLayoutChange, la
             const dataUrl = await toPng(element, {
                 backgroundColor: '#111827',
                 quality: 1.0,
-                pixelRatio: 4, // Increased for higher quality (fonts readability)
+                pixelRatio: 4,
+                style: {
+                    transform: 'scale(1)', // Force scale to 1 to prevent blurring from current zoom level
+                    width: element.offsetWidth + 'px',
+                    height: element.offsetHeight + 'px',
+                },
                 cacheBust: true,
                 filter: (node) => {
                     // Exclude controls and UI elements from export
@@ -83,7 +89,7 @@ export default function TreeControls({ people, relationships, onLayoutChange, la
             link.click();
         } catch (error) {
             console.error('Error exporting image:', error);
-            alert('Failed to export image. Please try again.');
+            toast.error('Failed to export image. Please try again.');
         }
     };
 
