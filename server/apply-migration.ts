@@ -8,20 +8,32 @@ console.log(`Migrating database at ${dbPath}...`);
 const db = new Database(dbPath);
 
 try {
-    // Enable WAL mode for better concurrency
-    db.exec('PRAGMA journal_mode = WAL;');
+    // Enable DELETE mode for Azure Files compatibility (WAL requires mmap which is flaky on CIFS/SMB)
+    db.run('PRAGMA journal_mode = DELETE;');
 
     // Read migration file
     const migrationPath = join(import.meta.dir, 'src', 'db', 'migrations', '001_multi_user_schema.sql');
     const migrationSql = readFileSync(migrationPath, 'utf-8');
+    console.log('--- MIGRATION SQL PREVIEW ---');
+    console.log(migrationSql.substring(0, 200));
+    console.log('-----------------------------');
 
     // Execute migration
-    // SQLite doesn't support multiple statements in one exec call easily in some drivers,
-    // but bun:sqlite might. Let's try splitting by semicolon if needed, 
-    // but usually a script can be run if the driver supports it.
-    // Bun's db.exec() executes all statements.
+    const statements = migrationSql
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
 
-    db.exec(migrationSql);
+    console.log(`Found ${statements.length} statements to execute.`);
+
+    const deploy = db.transaction((stmts) => {
+        for (const stmt of stmts) {
+            console.log('Executing statement:', stmt.substring(0, 50) + '...');
+            db.run(stmt);
+        }
+    });
+
+    deploy(statements);
 
     console.log('Migration completed successfully!');
 

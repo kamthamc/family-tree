@@ -24,8 +24,11 @@ WORKDIR /app
 # Copy server dependencies and source
 COPY --from=server-builder /app/server/node_modules ./node_modules
 COPY --from=server-builder /app/server/src ./src
+RUN echo "--- BUILD SCRIPT CHECK ---" && cat ./src/db/migrations/001_multi_user_schema.sql && echo "--- END CHECK ---"
 COPY --from=server-builder /app/server/package.json .
 COPY --from=server-builder /app/server/tsconfig.json .
+COPY --from=server-builder /app/server/apply-migration.ts .
+COPY --from=server-builder /app/server/drizzle.config.ts .
 COPY CHANGELOG.md .
 
 # Copy built client to a static directory served by Hono

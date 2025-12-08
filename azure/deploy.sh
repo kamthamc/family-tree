@@ -51,6 +51,21 @@ echo "Creating Resource Group..."
 az group create --name $RG_NAME --location $LOCATION --output none
 echo "Resource Group Created."
 
+# 1.5 Check for Soft-Deleted Key Vault and Purge
+KV_NAME="${APP_NAME}-vault"
+echo "Checking for soft-deleted Key Vault ($KV_NAME)..."
+DELETED_KV=$(az keyvault list-deleted --resource-type vault --query "[?name=='$KV_NAME'].name" -o tsv)
+
+if [ ! -z "$DELETED_KV" ]; then
+    echo "Found soft-deleted Key Vault: $DELETED_KV"
+    echo "Purging Key Vault (this may take a moment)..."
+    az keyvault purge --name $DELETED_KV --location $LOCATION
+    echo "Purge initiated. Waiting 20s for cleanup..."
+    sleep 20
+else
+    echo "No soft-deleted Key Vault found."
+fi
+
 # 2. Deploy Bicep (Infrastructure)
 echo "-----------------------------------"
 echo "Deploying Bicep Template..."
@@ -115,7 +130,13 @@ ACR_NAME=${ACR_URL%%.*}
 
 # This uploads source code and builds in the cloud
 # No local Docker required
-az acr build --registry $ACR_NAME --image familytree:latest .
+# Get Version from client/package.json
+VERSION=$(jq -r .version client/package.json)
+echo "Building Docker Image (Version: $VERSION)..."
+
+# This uploads source code and builds in the cloud
+# No local Docker required
+az acr build --registry $ACR_NAME --image familytree:latest --image familytree:$VERSION .
 
 
 # 5. Restart App Service

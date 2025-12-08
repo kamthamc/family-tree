@@ -1,8 +1,7 @@
--- Migration: Add multi-user support with encryption
--- This migration adds users, family_trees, and permissions tables
--- and updates existing tables to support multi-tenancy and encryption
+-- Initial Schema: Multi-user with encryption
+-- This script initializes the database from scratch
 
--- Create users table
+-- 1. Users table
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
@@ -15,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- Create family_trees table
+-- 2. Family Trees table
 CREATE TABLE IF NOT EXISTS family_trees (
   id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL,
@@ -26,7 +25,7 @@ CREATE TABLE IF NOT EXISTS family_trees (
   FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Create permissions table
+-- 3. Permissions table
 CREATE TABLE IF NOT EXISTS permissions (
   id TEXT PRIMARY KEY,
   family_tree_id TEXT NOT NULL,
@@ -37,11 +36,8 @@ CREATE TABLE IF NOT EXISTS permissions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Rename existing people table
-ALTER TABLE people RENAME TO people_old;
-
--- Create new people table with encryption
-CREATE TABLE people (
+-- 4. People table (Encrypted)
+CREATE TABLE IF NOT EXISTS people (
   id TEXT PRIMARY KEY,
   family_tree_id TEXT NOT NULL,
   encrypted_first_name TEXT,
@@ -59,11 +55,8 @@ CREATE TABLE people (
   FOREIGN KEY (family_tree_id) REFERENCES family_trees(id) ON DELETE CASCADE
 );
 
--- Rename existing events table
-ALTER TABLE events RENAME TO events_old;
-
--- Create new events table with encryption
-CREATE TABLE events (
+-- 5. Events table (Encrypted)
+CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   person_id TEXT,
   type TEXT,
@@ -74,11 +67,8 @@ CREATE TABLE events (
   FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE CASCADE
 );
 
--- Rename existing relationships table
-ALTER TABLE relationships RENAME TO relationships_old;
-
--- Create new relationships table with family_tree_id
-CREATE TABLE relationships (
+-- 6. Relationships table
+CREATE TABLE IF NOT EXISTS relationships (
   id TEXT PRIMARY KEY,
   family_tree_id TEXT NOT NULL,
   from_person_id TEXT,
@@ -90,20 +80,12 @@ CREATE TABLE relationships (
   FOREIGN KEY (to_person_id) REFERENCES people(id) ON DELETE CASCADE
 );
 
--- Create indexes for performance
-CREATE INDEX idx_family_trees_owner ON family_trees(owner_id);
-CREATE INDEX idx_permissions_family_tree ON permissions(family_tree_id);
-CREATE INDEX idx_permissions_user ON permissions(user_id);
-CREATE INDEX idx_people_family_tree ON people(family_tree_id);
-CREATE INDEX idx_events_person ON events(person_id);
-CREATE INDEX idx_relationships_family_tree ON relationships(family_tree_id);
-CREATE INDEX idx_relationships_from ON relationships(from_person_id);
-CREATE INDEX idx_relationships_to ON relationships(to_person_id);
-
--- Note: Data migration from old tables to new tables should be done separately
--- with a migration script that:
--- 1. Creates a default user
--- 2. Creates a default family tree
--- 3. Encrypts existing data
--- 4. Migrates to new tables
--- 5. Drops old tables
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_family_trees_owner ON family_trees(owner_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_family_tree ON permissions(family_tree_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_user ON permissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_people_family_tree ON people(family_tree_id);
+CREATE INDEX IF NOT EXISTS idx_events_person ON events(person_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_family_tree ON relationships(family_tree_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_person_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_person_id);

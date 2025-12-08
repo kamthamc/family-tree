@@ -19,20 +19,7 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-              return 'vendor-react';
-            }
-            if (id.includes('framer-motion') || id.includes('@xyflow') || id.includes('dagre')) {
-              return 'vendor-ui';
-            }
-            return 'vendor'; // all other node_modules
-          }
-        },
-      },
-    },
+    outDir: 'dist',
+    sourcemap: true
   },
 })

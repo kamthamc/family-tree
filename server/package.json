@@ -2,7 +2,7 @@
   "name": "server",
   "module": "src/index.ts",
   "type": "module",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "migrate": "bun run apply-migration.ts"
