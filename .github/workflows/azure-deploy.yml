@@ -2,48 +2,37 @@ name: Deploy to Azure
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   workflow_dispatch:
 
-env:
-  AZURE_WEBAPP_NAME: familytree-app
-  RESOURCE_GROUP: familytree-rg
-  ACR_NAME: familytreeacr <replace_with_actual_name>
-
 permissions:
+  id-token: write
   contents: read
-  packages: write
+
+env:
+  AZURE_WEBAPP_NAME: 'ftree123' # Update to your actual app name or use secret
+  AZURE_RESOURCE_GROUP: 'rg-familytree-prod-centralindia'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
-    # Login to Azure
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    # Build and Push Docker Image
-    - name: Log in to Azure Container Registry
-      uses: azure/docker-login@v1
-      with:
-        login-server: ${{ env.ACR_NAME }}.azurecr.io
-        username: ${{ secrets.ACR_USERNAME }}
-        password: ${{ secrets.ACR_PASSWORD }}
+    - name: Build and Push Docker Image
+      run: |
+        az acr login --name ${{ secrets.ACR_NAME }}
+        az acr build --image familytree:${{ github.sha }} --registry ${{ secrets.ACR_NAME }} .
 
-    - name: Build and Push to ACR
-      uses: docker/build-push-action@v2
-      with:
-        context: .
-        push: true
-        tags: ${{ env.ACR_NAME }}.azurecr.io/familytree:${{ github.sha }},${{ env.ACR_NAME }}.azurecr.io/familytree:latest
-
-    # Deploy to App Service
-    - name: Deploy to Azure Web App
-      uses: azure/webapps-deploy@v2
+    - name: Deploy to App Service
+      uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ env.AZURE_WEBAPP_NAME }}
         images: ${{ env.ACR_NAME }}.azurecr.io/familytree:${{ github.sha }}
