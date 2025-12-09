@@ -35,4 +35,4 @@ jobs:
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        images: ${{ env.ACR_NAME }}.azurecr.io/familytree:${{ github.sha }}
+        images: ${{ secrets.ACR_NAME }}.azurecr.io/familytree:${{ github.sha }}
