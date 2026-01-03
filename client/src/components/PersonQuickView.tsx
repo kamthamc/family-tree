@@ -1,16 +1,18 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Edit2, X, User, Calendar } from 'lucide-react';
+import { Edit2, X, User, Calendar, MapPin, Phone, Download } from 'lucide-react';
 import type { Person } from '../api';
+import { downloadVCard } from '../utils/vcard';
 
 interface PersonQuickViewProps {
     person: Person;
     position: { x: number; y: number };
     onClose: () => void;
     onEdit: () => void;
+    onViewLineage?: () => void;
 }
 
-export default function PersonQuickView({ person, position, onClose, onEdit }: PersonQuickViewProps) {
+export default function PersonQuickView({ person, position, onClose, onEdit, onViewLineage }: PersonQuickViewProps) {
     const cardRef = useRef<HTMLDivElement>(null);
     const [adjustedPos, setAdjustedPos] = useState(position);
 
@@ -125,8 +127,42 @@ export default function PersonQuickView({ person, position, onClose, onEdit }: P
                         </div>
                     </div>
 
+                    {/* Contact Info (if available) */}
+                    {(person.address || person.phone) && (
+                        <div className="mb-4 space-y-2 bg-gray-800/30 p-3 rounded border border-gray-700/30">
+                            {person.phone && (
+                                <div className="flex items-center gap-2 text-sm text-gray-300">
+                                    <Phone size={14} className="text-gray-500" />
+                                    <span>{person.phone}</span>
+                                </div>
+                            )}
+                            {person.address && (
+                                <div className="flex items-start gap-2 text-sm text-gray-300">
+                                    <MapPin size={14} className="text-gray-500 mt-0.5 shrink-0" />
+                                    <span className="leading-tight">{person.address}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Footer Actions */}
                     <div className="flex gap-2 mt-2 pt-4 border-t border-gray-800">
+                        {onViewLineage && (
+                            <button
+                                onClick={onViewLineage}
+                                className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition-colors border border-gray-700"
+                                title="Filter Tree to Lineage"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="3" /><line x1="12" y1="8" x2="12" y2="21" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="9" y1="17" x2="15" y2="17" /></svg>
+                            </button>
+                        )}
+                        <button
+                            onClick={() => downloadVCard(person)}
+                            className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition-colors border border-gray-700"
+                            title="Download Contact (vCard)"
+                        >
+                            <Download size={18} />
+                        </button>
                         <button
                             onClick={onEdit}
                             className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"

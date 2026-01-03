@@ -45,6 +45,8 @@ export const people = sqliteTable('people', {
   encryptedBirthDate: text('encrypted_birth_date'),
   encryptedDeathDate: text('encrypted_death_date'),
   encryptedNotes: text('encrypted_notes'),
+  encryptedAddress: text('encrypted_address'),
+  encryptedPhone: text('encrypted_phone'),
   // Non-sensitive fields
   gender: text('gender'),
   profileImage: text('profile_image'),

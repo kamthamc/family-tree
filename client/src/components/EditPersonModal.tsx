@@ -359,6 +359,30 @@ export default function EditPersonModal({ person, onClose, onFocus }: EditPerson
                                 </div>
                             </section>
 
+                            {/* Card: Contact Info */}
+                            <section className="bg-gray-800/50 border border-gray-700 rounded-lg p-5">
+                                <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 border-b border-gray-700 pb-2 flex items-center gap-2">
+                                    <Printer size={16} /> Contact Information
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Input
+                                        label="Phone Number"
+                                        placeholder="+1 (555) 000-0000"
+                                        value={formData.phone}
+                                        onChange={(v) => setFormData({ ...formData, phone: v })}
+                                    />
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-400 mb-1">Address</label>
+                                        <textarea
+                                            className="w-full bg-gray-900 rounded border border-gray-700 p-3 text-white text-sm focus:border-blue-500 outline-none hover:border-gray-600 transition-colors resize-y min-h-[60px]"
+                                            value={formData.address || ''}
+                                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                            placeholder="Full address..."
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
                             {/* Card: Facts & Attributes */}
                             <section className="bg-gray-800/50 border border-gray-700 rounded-lg p-5">
                                 <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider mb-4 border-b border-gray-700 pb-2">Facts & Attributes</h3>

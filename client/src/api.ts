@@ -22,6 +22,8 @@ export interface Person {
     birthDate: string | null;
     deathDate: string | null;
     notes: string | null;
+    address: string | null;
+    phone: string | null;
     profileImage: string | null;
     attributes: PersonAttributes;
 }

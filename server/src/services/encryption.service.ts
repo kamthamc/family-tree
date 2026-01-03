@@ -147,6 +147,8 @@ export class EncryptionService {
             encryptedBirthDate: person.birthDate ? this.encrypt(person.birthDate, userKey) : null,
             encryptedDeathDate: person.deathDate ? this.encrypt(person.deathDate, userKey) : null,
             encryptedNotes: person.notes ? this.encrypt(person.notes, userKey) : null,
+            encryptedAddress: person.address ? this.encrypt(person.address, userKey) : null,
+            encryptedPhone: person.phone ? this.encrypt(person.phone, userKey) : null,
             // Remove plaintext fields
             firstName: undefined,
             middleName: undefined,
@@ -155,6 +157,8 @@ export class EncryptionService {
             birthDate: undefined,
             deathDate: undefined,
             notes: undefined,
+            address: undefined,
+            phone: undefined,
         };
     }
 
@@ -171,6 +175,8 @@ export class EncryptionService {
             birthDate: person.encryptedBirthDate ? this.decrypt(person.encryptedBirthDate, userKey) : null,
             deathDate: person.encryptedDeathDate ? this.decrypt(person.encryptedDeathDate, userKey) : null,
             notes: person.encryptedNotes ? this.decrypt(person.encryptedNotes, userKey) : null,
+            address: person.encryptedAddress ? this.decrypt(person.encryptedAddress, userKey) : null,
+            phone: person.encryptedPhone ? this.decrypt(person.encryptedPhone, userKey) : null,
             // Remove encrypted fields from response
             encryptedFirstName: undefined,
             encryptedMiddleName: undefined,
@@ -179,6 +185,8 @@ export class EncryptionService {
             encryptedBirthDate: undefined,
             encryptedDeathDate: undefined,
             encryptedNotes: undefined,
+            encryptedAddress: undefined,
+            encryptedPhone: undefined,
         };
     }
 }
