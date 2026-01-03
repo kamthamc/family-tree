@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, Search, UserCircle, UserCircle2, HelpCircle } from 'lucide-react';
-import { ReactFlow, Background, Controls, useNodesState, useEdgesState, MarkerType, type Node, type Edge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, useNodesState, useEdgesState, MarkerType, type Node, type Edge, ReactFlowProvider } from '@xyflow/react';
 import dagre from 'dagre';
 import { type Person, type Relationship } from '../api';
 import { findRelationshipPath, describeRelationship } from '../utils/relationshipFinder';
@@ -194,16 +194,19 @@ export default function RelationshipFinderModal({ people, relationships, onClose
                                 <span className="text-gray-400 text-sm">Relationship: </span>
                                 <span className="text-white font-bold">{foundRelationship}</span>
                             </div>
-                            <ReactFlow
-                                nodes={nodes}
-                                edges={edges}
-                                onNodesChange={onNodesChange}
-                                onEdgesChange={onEdgesChange}
-                                fitView
-                            >
-                                <Background color="#374151" gap={20} />
-                                <Controls />
-                            </ReactFlow>
+                            <ReactFlowProvider>
+                                <ReactFlow
+                                    nodes={nodes}
+                                    edges={edges}
+                                    onNodesChange={onNodesChange}
+                                    onEdgesChange={onEdgesChange}
+                                    fitView
+                                    proOptions={{ hideAttribution: true }}
+                                >
+                                    <Background color="#374151" gap={20} />
+                                    <Controls />
+                                </ReactFlow>
+                            </ReactFlowProvider>
                         </>
                     ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-red-400">

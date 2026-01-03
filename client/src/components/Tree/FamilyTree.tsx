@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
+import { getLineage } from '../../utils/lineage';
 import { useQuery } from '@tanstack/react-query';
 import { api, type Relationship, type Person } from '../../api';
 
@@ -202,6 +203,8 @@ export default function FamilyTree() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [showFinder, setShowFinder] = useState(false);
     const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+    const [lineageRootId, setLineageRootId] = useState<string | null>(null);
+    const [refreshKey, setRefreshKey] = useState(0);
 
 
     useEffect(() => {
@@ -361,6 +364,12 @@ export default function FamilyTree() {
 
         // --- 1. Filter People ---
         let filteredPeople = people;
+
+        if (lineageRootId) {
+            const lineageIds = getLineage(lineageRootId, relationships);
+            filteredPeople = filteredPeople.filter(p => lineageIds.has(p.id));
+        }
+
         if (filters.status !== 'all') {
             filteredPeople = filteredPeople.filter(p => {
                 if (filters.status === 'living') return !p.deathDate;
@@ -378,7 +387,10 @@ export default function FamilyTree() {
             });
         }
 
-        const depthMap = calculateGenerationDepth(people, relationships);
+        const activeIds = new Set(filteredPeople.map(p => p.id));
+        const activeRelationships = relationships.filter(r => activeIds.has(r.fromPersonId) && activeIds.has(r.toPersonId));
+
+        const depthMap = calculateGenerationDepth(filteredPeople, activeRelationships);
         const generatedNodes: Node[] = [];
         const generatedEdges: Edge[] = [];
 
@@ -387,12 +399,13 @@ export default function FamilyTree() {
         // We need to track who has been "grouped" so we don't duplicate.
 
         const processedPeople = new Set<string>();
-        const spouseRelationships = relationships.filter(r => r.type === 'spouse' || r.type === 'divorced');
+
+        const spouseRelationships = activeRelationships.filter(r => r.type === 'spouse' || r.type === 'divorced');
 
         // --- PRE-CALCULATION: childrenMap ---
         // We need this for Single Parent detection
         const childrenMap: Record<string, string[]> = {};
-        relationships.filter(r => r.type === 'parent').forEach(rel => {
+        activeRelationships.filter(r => r.type === 'parent').forEach(rel => {
             if (!childrenMap[rel.toPersonId]) childrenMap[rel.toPersonId] = [];
             childrenMap[rel.toPersonId].push(rel.fromPersonId);
         });
@@ -700,7 +713,7 @@ export default function FamilyTree() {
         setNodes(finalNodes);
         setEdges(layoutedEdges);
 
-    }, [people, relationships, filters]); // Re-run if data/filters change (will reset layout if new nodes appear, but persistence is keyed by ID)
+    }, [people, relationships, filters, refreshKey, lineageRootId]); // Re-run if data/filters change (will reset layout if new nodes appear, but persistence is keyed by ID)
 
     // Handle normal node drag changes (xyflow requirement)
     const onNodesChangeHandler = useCallback((changes: NodeChange[]) => {
@@ -727,6 +740,8 @@ export default function FamilyTree() {
                     onFindRelationship={() => setShowFinder(true)}
                     onFilterChange={(newFilters) => startTransition(() => setFilters(newFilters))}
                     onRefreshLayout={() => setIsResetConfirmOpen(true)}
+                    lineageRootId={lineageRootId}
+                    onClearLineage={() => setLineageRootId(null)}
                 />
 
                 <ReactFlow
@@ -742,6 +757,7 @@ export default function FamilyTree() {
                     fitView
                     minZoom={0.1}
                     maxZoom={4}
+                    proOptions={{ hideAttribution: true }}
                 >
                     <Background color="#334155" gap={20} />
                     <Controls
@@ -800,14 +816,19 @@ export default function FamilyTree() {
                 {selectedPerson && clickPosition && (
                     <PersonQuickView
                         person={selectedPerson}
-                        onClose={() => setSelectedPerson(null)}
                         position={clickPosition}
+                        onClose={() => { setSelectedPerson(null); setClickPosition(null); }}
                         onEdit={() => {
-                            setSelectedPerson(selectedPerson); // Keep selected
+                            setClickPosition(null);
                             setIsEditModalOpen(true);
+                        }}
+                        onViewLineage={() => {
+                            setLineageRootId(selectedPerson.id);
+                            setSelectedPerson(null);
                         }}
                     />
                 )}
+
 
                 <ConfirmModal
                     isOpen={isResetConfirmOpen}
@@ -819,7 +840,8 @@ export default function FamilyTree() {
                     onConfirm={() => {
                         setSavedPositions({});
                         localStorage.removeItem('familyTreePositions');
-                        window.location.reload();
+                        setRefreshKey(prev => prev + 1); // Force re-layout
+                        setIsResetConfirmOpen(false);
                     }}
                 />
 
