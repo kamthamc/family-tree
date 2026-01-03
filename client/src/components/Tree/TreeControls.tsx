@@ -1,5 +1,5 @@
 import { Download, Layout, ArrowRightLeft, Search, Filter, RefreshCw } from 'lucide-react';
-import { toJpeg, toPng } from 'html-to-image';
+import { toJpeg } from 'html-to-image';
 import CSVManager from '../CSVManager';
 import { type Person, type Relationship } from '../../api';
 import { useState, useEffect } from 'react';
