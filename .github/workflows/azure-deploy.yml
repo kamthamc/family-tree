@@ -26,10 +26,16 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+    - name: Get Version
+      id: package-version
+      run: |
+        VERSION=$(jq -r .version client/package.json)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
     - name: Build and Push Docker Image
       run: |
         az acr login --name ${{ secrets.ACR_NAME }}
-        az acr build --image familytree:${{ github.sha }} --registry ${{ secrets.ACR_NAME }} .
+        az acr build --image familytree:${{ github.sha }} --image familytree:latest --image familytree:${{ steps.package-version.outputs.version }} --registry ${{ secrets.ACR_NAME }} .
 
     - name: Deploy to App Service
       uses: azure/webapps-deploy@v3
