@@ -42,3 +42,9 @@ jobs:
       with:
         app-name: ${{ env.AZURE_WEBAPP_NAME }}
         images: ${{ secrets.ACR_NAME }}.azurecr.io/familytree:${{ github.sha }}
+
+    - name: Cleanup Old Images
+      run: |
+        chmod +x ./scripts/cleanup-acr.sh
+        # Cleaning up 'familytree' repository, keeping last 5 images
+        ./scripts/cleanup-acr.sh ${{ secrets.ACR_NAME }} familytree 5
